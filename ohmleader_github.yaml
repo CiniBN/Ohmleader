@@ -1,0 +1,844 @@
+esphome:
+  name: ohmpilot
+  friendly_name: Ohmpilot
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "LPtFX3AFGMhKhtIoQe0Zd2c8+O+iLNSMpPE/0XNul5g="
+
+ota:
+  - platform: esphome
+    password: "de3ad76130a54948e5c03604349e06d5"
+
+#wifi:
+#  ssid: !secret wifi_ssid
+#  password: !secret wifi_password
+#  manual_ip:
+#    static_ip: 192.168.1.22
+#    gateway: 192.168.1.1
+#    subnet: 255.255.255.0
+#    dns1: 8.8.8.8
+#    dns2: 8.8.4.4
+
+ethernet:
+  type: W5500
+  clk_pin: GPIO42
+  mosi_pin: GPIO43
+  miso_pin: GPIO44
+  cs_pin: GPIO41
+  interrupt_pin: GPIO2
+  reset_pin: GPIO1
+  manual_ip:
+    static_ip: 192.168.1.22
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+    dns1: 8.8.8.8
+    dns2: 8.8.4.4
+
+web_server:
+  port: 80
+
+# Sun — szükséges a napkelte / napnyugta ellenőrzéshez
+sun:
+  latitude: 46.32235
+  longitude: 20.49440
+  id: sun_main
+
+time:
+  - platform: sntp
+    servers:
+      - 0.hu.pool.ntp.org
+      - 1.hu.pool.ntp.org
+    id: sntp_time
+    on_time:
+      - seconds: /30
+        then:
+          - lambda: |-
+              bool value_ev = id(futas_engedelyezett_ev).state;
+              id(futas_engedelyezett_ev).publish_state(value_ev);
+              bool value_nyar = id(futas_engedelyezett_nyar).state;
+              id(futas_engedelyezett_nyar).publish_state(value_nyar);
+
+uart:
+  - id: mod_bus
+    baud_rate: 4800
+    parity: NONE 
+    stop_bits: 1
+    debug:
+      direction: BOTH
+      dummy_receiver: true
+      after:
+        timeout: 10ms
+    tx_pin: 7
+    rx_pin: 15
+
+modbus:  
+  id: modbus1
+
+modbus_controller:  
+  - id: omero
+    address: 0x0003
+    modbus_id: modbus1
+    setup_priority: -10
+    update_interval: 1500ms
+    command_throttle: 500ms
+
+# PID működéséhez szükséges globális változók definiálása
+globals:
+    # Az aktuális hibát (eltérés a kívánt érték – „setpoint” – és a mért érték – „measurement” – között).
+    # Ez az alapja a PID-számításnak
+  - id: pid_error_l1
+    type: float
+    initial_value: '0'
+
+    # Az összegzett hibát – vagyis az időben felhalmozott hibák összegét.
+    # A PID „I” (integráló) komponense ezt használja, hogy figyelembe vegye a tartós eltéréseket,
+    # és fokozatosan rásegítsen, ha a vezérlés nem éri el a kívánt értéket.
+  - id: pid_integral_l1
+    type: float
+    initial_value: '0'
+
+    # Az előző ciklusban mért hibát.
+    # Ebből számolható ki a derivált (változási sebesség) – vagyis a „D” komponens:
+    # derivative = current_error - prev_error
+    #Ez segít tompítani a hirtelen változásokat („belengéseket”).
+  - id: pid_prev_error_l1
+    type: float
+    initial_value: '0'
+
+    # A három komponensből áll össze a PID-kimenet:
+    #  output = kp * error + ki * integral + kd * derivative
+
+    # Majd ezt az output értéket használjuk a PWM szint beállítására, például:
+    # id(pwm_output1).set_level(output);
+
+  - id: pid_error_l2
+    type: float
+    initial_value: '0'
+  - id: pid_integral_l2
+    type: float
+    initial_value: '0'
+  - id: pid_prev_error_l2
+    type: float
+    initial_value: '0'
+
+  - id: pid_error_l3
+    type: float
+    initial_value: '0'
+  - id: pid_integral_l3
+    type: float
+    initial_value: '0'
+  - id: pid_prev_error_l3
+    type: float
+    initial_value: '0'
+
+  - id: pid_error_3f
+    type: float
+    initial_value: '0.0'
+  - id: pid_integral_3f
+    type: float
+    initial_value: '0.0'
+  - id: pid_prev_error_3f
+    type: float
+    initial_value: '0.0'
+
+  # Fűtőszál teljesítménye:
+  - id: futoszal_teljesitmeny_3f
+    type: float
+    initial_value: '3.0'  # Állítsd be a valódi értéket!
+
+  - id: futoszal_teljesitmeny_1f
+    type: float
+    initial_value: '1.0'  # Állítsd be a valódi értéket!
+
+button:
+  - platform: restart
+    name: "Restart"
+
+number:
+  - platform: template
+    id: celt
+    name: "Célhőmérséklet"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    max_value: 65.0
+    min_value: 30.0
+    step: 0.5
+    optimistic: true
+    initial_value: 60.0
+    mode: BOX
+    on_value: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+  - platform: template
+    id: maxt
+    name: "Maximális hőmérséklet"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    max_value: 75.0
+    min_value: 30.0
+    step: 0.5
+    optimistic: true
+    initial_value: 65.0
+    mode: BOX
+    on_value: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+  - platform: template
+    id: kcel
+    name: "Alapjel"
+    unit_of_measurement: "%"
+    max_value: 100.0
+    min_value: 0.0
+    step: 1
+    optimistic: true
+    initial_value: 0.0
+    on_value: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+select:
+- platform: template
+  id: mukodes
+  name: "Működés"
+  options:
+    - "Auto"
+    - "Kézi"
+  initial_option: "Auto"
+  optimistic: True
+  set_action:
+      then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+- platform: template
+  id: mukodes_fazis
+  name: "Fázisválasztó"
+  options:
+    - "Egy"
+    - "Három"
+  initial_option: "Három"
+  optimistic: True
+  set_action:
+      then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+  
+  # Tartály kiválasztása kézi üzemmódban
+- platform: template
+  id: futes
+  name: "Fűtés"
+  options:
+    - "HMV"
+    - "Puffer"
+  initial_option: "HMV"
+  optimistic: True
+
+sensor:
+#  - platform: wifi_signal
+#    name: "WiFi Signal Sensor"
+#    update_interval: 60s
+
+  - platform: modbus_controller
+    modbus_controller_id: omero
+    id: opt
+    name: "Pillanatnyi teljesítmény"
+    address: 0x5012
+    state_class: measurement
+    device_class: power
+    unit_of_measurement: "kW" 
+    register_type: holding
+    value_type: FP32
+    accuracy_decimals: 2
+
+  - platform: total_daily_energy
+    name: 'Napi fogyasztás'
+    power_id: opt
+    unit_of_measurement: 'kWh'
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+
+  - platform: modbus_controller
+    modbus_controller_id: omero
+    id: opt_l1
+    name: "Pillanatnyi teljesítmény L1"
+    address: 0x5014
+    state_class: measurement
+    device_class: power
+    unit_of_measurement: "kW" 
+    register_type: holding
+    value_type: FP32
+    accuracy_decimals: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: omero
+    id: opt_l2
+    name: "Pillanatnyi teljesítmény L2"
+    address: 0x5016
+    state_class: measurement
+    device_class: power
+    unit_of_measurement: "kW" 
+    register_type: holding
+    value_type: FP32
+    accuracy_decimals: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: omero
+    id: opt_l3
+    name: "Pillanatnyi teljesítmény L3"
+    address: 0x5018
+    state_class: measurement
+    device_class: power
+    unit_of_measurement: "kW" 
+    register_type: holding
+    value_type: FP32
+    accuracy_decimals: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: omero
+    id: ove
+    name: "Hatásos villamos energia"
+    address: 0x600C
+    state_class: total_increasing
+    device_class: energy
+    unit_of_measurement: "kWh" 
+    register_type: holding
+    value_type: FP32
+    accuracy_decimals: 2
+    internal: True
+
+  - platform: template
+    id: ovf
+    name: "Villamos fogyasztás"
+    state_class: total_increasing
+    device_class: energy
+    unit_of_measurement: "kWh"
+    lambda: |-
+      return id(ove).state - 200.26; // A fogyasztásmérő korábbi fogyasztása, ha nem 0-ról indult a mérés.
+  
+  - platform: homeassistant
+    entity_id: sensor.p1_meter_5c2faf10f87a_aktiv_teljesitmeny_1_fazis
+    id: fmw1
+    name: "Fogyasztásmérő L1"
+    device_class: power
+    unit_of_measurement: "W"
+    on_value: 
+      - then:
+        - script.execute: power1
+
+  - platform: homeassistant
+    entity_id: sensor.p1_meter_5c2faf10f87a_aktiv_teljesitmeny_2_fazis
+    id: fmw2
+    name: "Fogyasztásmérő L2"
+    device_class: power
+    unit_of_measurement: "W"
+    on_value: 
+      - then:
+        - script.execute: power2
+
+  - platform: homeassistant
+    entity_id: sensor.p1_meter_5c2faf10f87a_aktiv_teljesitmeny_3_fazis
+    id: fmw3
+    name: "Fogyasztásmérő L3"
+    device_class: power
+    unit_of_measurement: "W"
+    on_value: 
+      - then:
+        - script.execute: power3    
+
+  - platform: homeassistant
+    entity_id: sensor.p1_meter_5c2faf10f87a_aktiv_teljesitmeny
+    id: fmw
+    name: "Fogyasztásmérő"
+    device_class: power
+    unit_of_measurement: "W"
+    on_value: 
+      - then:
+        - script.execute: power 
+
+  - platform: homeassistant
+    entity_id: sensor.bsb_lan_puffertarolo_homerseklet_b41
+    id: ptah
+    name: "Puffertartály alsó hőmérséklet"
+    device_class: temperature
+    unit_of_measurement: "°C"
+
+  - platform: homeassistant
+    entity_id: sensor.bsb_lan_puffertarolo_homerseklet_b4
+    id: ptfh
+    name: "Puffertartály felső hőmérséklet"
+    device_class: temperature
+    unit_of_measurement: "°C"
+    on_value: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+  - platform: homeassistant
+    entity_id: sensor.bsb_lan_hmv_homerseklet_b3
+    id: hmvh
+    name: "HMV tartály hőmérséklet"
+    device_class: temperature
+    unit_of_measurement: "°C"
+    on_value: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+  - platform: homeassistant
+    entity_id: sensor.fennmarado_villamos_energia
+    id: fve
+    name: "Fennmaradó villamos energia"
+    device_class: energy
+    unit_of_measurement: "kWh"
+
+binary_sensor:
+  - platform: status
+    id: st
+    name: "ESP Kapcsolatban van"
+
+  - platform: gpio
+    name: "MK1"
+    id: mk1_input
+    pin:
+      number: 16
+      inverted: true
+    on_state: 
+      - then:
+        - script.execute: power
+        - script.execute: power1
+        - script.execute: power2
+        - script.execute: power3
+
+  - platform: gpio
+    name: "A2v3-input2"
+    id: mk2_input
+    pin:
+      number: 17
+      inverted: true
+
+  # Engedélyezés ősz-tavasz: 09.15 -> 12.31 és 01.01 -> 05.15, napközben, fennmaradó villamos energia > 0
+  - platform: template
+    name: "Fűtés engedélyezett (őszi–tavaszi)"
+    id: futas_engedelyezett_ev
+    lambda: |-
+      // fennmaradó energia ellenőrzése
+      float energy = id(fve).state;
+      if (energy <= 0.0) {
+        // nincs energia -> tilt
+        return false;
+      }
+
+      // időpont (SNTP)
+      auto now = id(sntp_time).now();
+      if (!now.is_valid()) return false;
+      int m = now.month;
+      int d = now.day_of_month;
+
+      bool in_range = false;
+      // szeptember 15 - december 31
+      if (m > 9 || (m == 9 && d >= 15)) in_range = true;
+      // január 1 - május 15
+      if (m < 5 || (m == 5 && d <= 15)) in_range = true;
+
+      if (!in_range) return false;
+
+      // napközben? (sun komponens is_day)
+      if (!id(sun_main).is_above_horizon()) return false;
+
+      return true;
+
+  # Engedélyezés nyár: 05.15 -> 09.15 között, csak ha a fennmaradó villamos energia > 0
+  - platform: template
+    name: "Fűtés engedélyezett (nyári)"
+    id: futas_engedelyezett_nyar
+    lambda: |-
+      float energy = id(fve).state;
+      if (energy <= 0.0) return false;
+
+      auto now = id(sntp_time).now();
+      if (!now.is_valid()) return false;
+      int m = now.month;
+      int d = now.day_of_month;
+
+      // Május 15 -> Szeptember 15 (beleértve)
+      if (m < 5 || m > 9) return false;
+      if (m == 5 && d < 15) return false;
+      if (m == 9 && d > 15) return false;
+
+      return true;
+
+script:
+  - id: power1
+    mode: single
+    then:
+      - lambda: |-
+          // Alap log: script indult
+          ESP_LOGD("custom", "power1 script elindult");
+
+          // Engedélyezés vizsgálata (ha sem az őszi-tavaszi, sem a nyári engedély nincs meg, kilépünk)
+          if (!id(futas_engedelyezett_ev).state && !id(futas_engedelyezett_nyar).state) {
+            id(pid_integral_l1) = 0;
+            id(pwm_output1).set_level(0.0);
+            ESP_LOGI("custom", "power1 letiltva: nincs engedélyezve a működés (fve<=0 vagy nem megfelelő idő).");
+            return;
+          } else {
+            ESP_LOGD("custom", "power1 engedélyezve: futas_engedelyezett_ev=%s, futas_engedelyezett_nyar=%s",
+                     (id(futas_engedelyezett_ev).state ? "true":"false"),
+                     (id(futas_engedelyezett_nyar).state ? "true":"false"));
+          }
+
+          // Csak akkor szabályozunk, ha Auto módban vagyunk, a hőmérséklet kisebb mint a cél,
+          // és a fázisválasztó "Egy"
+          if ((id(mukodes).current_option() == "Auto") &&
+              (id(ptfh).state < id(celt).state) &&
+              (id(maxt).state > id(ptfh).state) &&
+              (id(mukodes_fazis).current_option() == "Egy") &&
+              (id(mk1_input).state == true )) {
+
+            ESP_LOGD("custom", "power1: Auto mód, PID kezdése");
+
+            // PID beállítások
+            float setpoint = -100.0; // cél: -100W export (100 W visszatáplálás)
+            float measurement = id(fmw1).state;
+            float error = setpoint - measurement;
+
+            float kp = 0.5;
+            float ki = 0.01;
+            float kd = 0.1;
+
+            id(pid_integral_l1) += error;
+            id(pid_integral_l1) = fmax(fmin(id(pid_integral_l1), 1000.0), -1000.0);
+            float derivative = error - id(pid_prev_error_l1);
+
+            float output = kp * error + ki * id(pid_integral_l1) + kd * derivative;
+            id(pid_prev_error_l1) = error;
+
+            // kimenet korlátozása
+            float output_pwm = output / id(futoszal_teljesitmeny_1f);
+            float clipped = fmax(fmin(output_pwm, 1.0), 0.0);
+
+            // PWM kimenet beállítása
+            id(pwm_output1).set_level(clipped);
+            ESP_LOGI("custom", "PID L1 | error: %.2f | raw_out: %.4f | pwm: %.4f", error, output, clipped);
+          }
+
+          // Ha nem Auto módban vagyunk, akkor a kézi alapjel alapján állítunk
+          else if ((id(mukodes).current_option() != "Auto") &&
+                   (id(ptfh).state < id(celt).state) &&
+                   (id(maxt).state > id(ptfh).state) &&
+                   (id(mukodes_fazis).current_option() == "Egy") &&
+                   (id(mk1_input).state == true )) {
+
+            float pwm_level = id(kcel).state / 100.0;
+            id(pwm_output1).set_level(pwm_level);
+            ESP_LOGI("custom", "Kézi L1 PWM beállítva: %.2f", pwm_level);
+          } else {
+            // ha sem egyik feltétel sem teljesül, akkor kikapcsoljuk
+            id(pwm_output1).set_level(0.0);
+            ESP_LOGD("custom", "power1: feltételek nem teljesültek, pwm -> 0");
+          }
+      
+  - id: power2
+    mode: single
+    then: 
+      - lambda: |-
+          ESP_LOGD("custom", "power2 script elindult");
+
+          if (!id(futas_engedelyezett_ev).state && !id(futas_engedelyezett_nyar).state) {
+            id(pid_integral_l2) = 0;
+            id(pwm_output2).set_level(0.0);
+            ESP_LOGI("custom", "power2 letiltva: nincs engedélyezve a működés (fve<=0 vagy nem megfelelő idő).");
+            return;
+          } else {
+            ESP_LOGD("custom", "power2 engedélyezve: ev=%s, nyar=%s",
+                     (id(futas_engedelyezett_ev).state ? "true":"false"),
+                     (id(futas_engedelyezett_nyar).state ? "true":"false"));
+          }
+
+          if ((id(mukodes).current_option() == "Auto") &&
+              (id(ptfh).state < id(celt).state) &&
+              (id(maxt).state > id(ptfh).state) &&
+              (id(mukodes_fazis).current_option() == "Egy") &&
+              (id(mk1_input).state == true )) {
+
+            ESP_LOGD("custom", "power2: Auto mód, PID kezdése");
+
+            float setpoint = -100.0; // cél: -100W export
+            float measurement = id(fmw2).state;
+            float error = setpoint - measurement;
+
+            float kp = 0.5;
+            float ki = 0.01;
+            float kd = 0.1;
+
+            id(pid_integral_l2) += error;
+            id(pid_integral_l2) = fmax(fmin(id(pid_integral_l2), 1000.0), -1000.0);
+            float derivative = error - id(pid_prev_error_l2);
+
+            float output = kp * error + ki * id(pid_integral_l2) + kd * derivative;
+            id(pid_prev_error_l2) = error;
+
+            float output_pwm = output / id(futoszal_teljesitmeny_1f);
+            float clipped = fmax(fmin(output_pwm, 1.0), 0.0);
+
+            id(pwm_output2).set_level(clipped);
+            ESP_LOGI("custom", "PID L2 | error: %.2f | raw_out: %.4f | pwm: %.4f", error, output, clipped);
+          }
+
+          // Ha nem Auto módban vagyunk, akkor a kézi alapjel alapján állítunk
+          else if ((id(mukodes).current_option() != "Auto") &&
+                   (id(ptfh).state < id(celt).state) &&
+                   (id(maxt).state > id(ptfh).state) &&
+                   (id(mukodes_fazis).current_option() == "Egy") &&
+                   (id(mk1_input).state == true )) {
+
+            float pwm_level = id(kcel).state / 100.0;
+            id(pwm_output2).set_level(pwm_level);
+            ESP_LOGI("custom", "Kézi L2 PWM beállítva: %.2f", pwm_level);
+          } else {
+            id(pwm_output2).set_level(0.0);
+            ESP_LOGD("custom", "power2: feltételek nem teljesültek, pwm -> 0");
+          }
+
+  - id: power3
+    mode: single
+    then: 
+      - lambda: |-
+          ESP_LOGD("custom", "power3 script elindult");
+
+          if (!id(futas_engedelyezett_ev).state && !id(futas_engedelyezett_nyar).state) {
+            id(pid_integral_l3) = 0;
+            id(pwm_output3).set_level(0.0);
+            ESP_LOGI("custom", "power3 letiltva: nincs engedélyezve a működés (fve<=0 vagy nem megfelelő idő).");
+            return;
+          } else {
+            ESP_LOGD("custom", "power3 engedélyezve: ev=%s, nyar=%s",
+                     (id(futas_engedelyezett_ev).state ? "true":"false"),
+                     (id(futas_engedelyezett_nyar).state ? "true":"false"));
+          }
+
+          if ((id(mukodes).current_option() == "Auto") &&
+              (id(ptfh).state < id(celt).state) &&
+              (id(maxt).state > id(ptfh).state) &&
+              (id(mukodes_fazis).current_option() == "Egy") &&
+              (id(mk1_input).state == true )) {
+
+            ESP_LOGD("custom", "power3: Auto mód, PID kezdése");
+
+            float setpoint = -100.0; // cél: -100W export
+            float measurement = id(fmw3).state;
+            float error = setpoint - measurement;
+
+            float kp = 0.5;
+            float ki = 0.01;
+            float kd = 0.1;
+
+            id(pid_integral_l3) += error;
+            id(pid_integral_l3) = fmax(fmin(id(pid_integral_l3), 1000.0), -1000.0);
+            float derivative = error - id(pid_prev_error_l3);
+
+            float output = kp * error + ki * id(pid_integral_l3) + kd * derivative;
+            id(pid_prev_error_l3) = error;
+
+            float output_pwm = output / id(futoszal_teljesitmeny_1f);
+            float clipped = fmax(fmin(output_pwm, 1.0), 0.0);
+
+            id(pwm_output3).set_level(clipped);
+            ESP_LOGI("custom", "PID L3 | error: %.2f | raw_out: %.4f | pwm: %.4f", error, output, clipped);
+          }
+
+          // Ha nem Auto módban vagyunk, akkor a kézi alapjel alapján állítunk
+          else if ((id(mukodes).current_option() != "Auto") &&
+                   (id(ptfh).state < id(celt).state) &&
+                   (id(maxt).state > id(ptfh).state) &&
+                   (id(mukodes_fazis).current_option() == "Egy") &&
+                   (id(mk1_input).state == true)) {
+
+            float pwm_level = id(kcel).state / 100.0;
+            id(pwm_output3).set_level(pwm_level);
+            ESP_LOGI("custom", "Kézi L3 PWM beállítva: %.2f", pwm_level);
+          } else {
+            id(pwm_output3).set_level(0.0);
+            ESP_LOGD("custom", "power3: feltételek nem teljesültek, pwm -> 0");
+          }
+
+  - id: power
+    mode: single
+    then:
+      - lambda: |-
+          ESP_LOGD("custom", "power (3f) script elindult");
+
+          // Ha sem az őszi-tavaszi, sem a nyári engedély nincs meg, akkor leállítjuk mindhárom PWM-et
+          if (!id(futas_engedelyezett_ev).state && !id(futas_engedelyezett_nyar).state) {
+            id(pid_integral_3f) = 0;
+            id(pwm_output1).set_level(0.0);
+            id(pwm_output2).set_level(0.0);
+            id(pwm_output3).set_level(0.0);
+            ESP_LOGI("custom", "power (3f) letiltva: nincs engedélyezve a működés (fve<=0 vagy nem megfelelő idő).");
+            return;
+          } else {
+            ESP_LOGD("custom", "power (3f) engedélyezve: ev=%s, nyar=%s",
+                     (id(futas_engedelyezett_ev).state ? "true":"false"),
+                     (id(futas_engedelyezett_nyar).state ? "true":"false"));
+          }
+
+          if ((id(mukodes).current_option() == "Auto") &&
+              (id(ptfh).state < id(celt).state) &&
+              (id(maxt).state > id(ptfh).state) &&
+              (id(mukodes_fazis).current_option() == "Három") &&
+              (id(mk1_input).state == true )) {
+
+            ESP_LOGD("custom", "power (3f): Auto mód, PID kezdése");
+
+            float setpoint = -100.0; // export célérték
+            float measurement = id(fmw).state;
+            float error = setpoint - measurement;
+
+            float kp = 0.5;
+            float ki = 0.01;
+            float kd = 0.1;
+
+            id(pid_integral_3f) += error;
+            id(pid_integral_3f) = fmax(fmin(id(pid_integral_3f), 3000.0), -3000.0);
+            float derivative = error - id(pid_prev_error_3f);
+
+            float output = kp * error + ki * id(pid_integral_3f) + kd * derivative;
+            id(pid_prev_error_3f) = error;
+
+            float output_pwm = output / id(futoszal_teljesitmeny_3f);
+            float clipped = fmax(fmin(output_pwm, 1.0), 0.0);
+
+            id(pwm_output1).set_level(clipped);
+            id(pwm_output2).set_level(clipped);
+            id(pwm_output3).set_level(clipped);
+
+            ESP_LOGI("custom", "PID 3f | error: %.2f | raw_out: %.4f | pwm: %.4f", error, output, clipped);
+          }
+
+          // Ha nem Auto módban vagyunk, akkor a kézi alapjel alapján állítunk
+          else if ((id(mukodes).current_option() != "Auto") &&
+                   (id(ptfh).state < id(celt).state) &&
+                   (id(maxt).state > id(ptfh).state) &&
+                   (id(mukodes_fazis).current_option() == "Három") &&
+                   (id(mk1_input).state == true )) {
+
+            float pwm_level = id(kcel).state / 100.0;
+            id(pwm_output1).set_level(pwm_level);
+            id(pwm_output2).set_level(pwm_level);
+            id(pwm_output3).set_level(pwm_level);
+
+            ESP_LOGI("custom", "Kézi 3f PWM beállítva: %.2f", pwm_level);
+          } else {
+            id(pwm_output1).set_level(0.0);
+            id(pwm_output2).set_level(0.0);
+            id(pwm_output3).set_level(0.0);
+            ESP_LOGD("custom", "power (3f): feltételek nem teljesültek, pwm mind -> 0");
+          }
+
+interval:
+  - id: mk1
+    interval: 5s
+    then: 
+      - lambda: |-
+          if ((id(maxt).state > id(ptfh).state) &&
+              (id(st).state == 1 )) {
+
+            id(rele1).turn_on();
+
+          } else if ((id(maxt).state > id(hmvh).state) &&
+                     (id(st).state == 1 )) {
+                  
+              id(rele1).turn_on();
+
+          } else {
+            id(rele1).turn_off();
+          }
+
+  - id: mk2
+    interval: 5s
+    then:
+      - lambda: |-
+          // --- mk2: HMV vagy Puffer kiválasztása ---
+          if ((id(mukodes).current_option() == "Auto") && (id(hmvh).state > id(celt).state)) {
+            ESP_LOGD("custom", "mk2, Auto üzem, HMV elérte a célhőmérsékletet, puffer -> relé2 BE");
+            id(rele2).turn_on();
+            return;
+          }
+
+          if ((id(mukodes).current_option() == "Auto") && (id(hmvh).state < id(celt).state)) {
+            ESP_LOGD("custom", "mk2, Auto üzem, HMV nem érte el a célhőmérsékletet -> relé2 KI");
+            id(rele2).turn_off();
+            return;
+          }
+
+          if ((id(mukodes).current_option() == "Kézi") && (id(futes).current_option() == "HMV")) {
+            ESP_LOGD("custom", "mk2, Kézi üzem, HMV-re kapcsolva -> relé2 KI");
+            id(rele2).turn_off();
+            return;
+          }
+
+          if ((id(mukodes).current_option() == "Kézi") && (id(futes).current_option() == "Puffer")) {
+            ESP_LOGD("custom", "mk2, Kézi üzem, Pufferre kapcsolva -> relé2 BE");
+            id(rele2).turn_on();
+            return;
+          }
+
+output:
+  - platform: ledc
+    id: pwm_output1
+    pin: GPIO5
+    inverted: True
+    frequency: "50Hz"
+    max_power: 0.98
+
+  - platform: ledc
+    id: pwm_output2
+    pin: GPIO38
+    inverted: True
+    frequency: "50Hz"
+    max_power: 0.98
+
+  - platform: ledc
+    id: pwm_output3
+    pin: GPIO6
+    inverted: True
+    frequency: "50Hz"
+    max_power: 0.98
+  
+  - platform: gpio
+    id: rele1
+    pin: GPIO40
+
+  - platform: gpio
+    id: rele2
+    pin: GPIO39
