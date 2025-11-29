@@ -53,84 +53,181 @@ Minden esetben tartsa be az oszágában évrényes szabványokat, jogszabályoka
 A szerző semmilyen jogi következményt nem vállal a hibás és nem megfelelő méretezésből és kivitelezésből származó balesetek, tűzesetek miatt!
 Minden nemű a villamos hálózatra kapcsolt saját gyártmányú nem minősített berendezés hálózatra kapcsolása az Ön felelősége!
 
-⚙️ 1. Működési módok
+🔧 Főbb funkciók és működési módok
+1. Kapcsolódás és alap infrastruktúra
 
-    A rendszer két dimenzióban kezeli a működést:
-    
-      A. Üzemmód (Auto / Kézi)
-      Auto: PID szabályozó működik.
-      Kézi: A kcel (%) alapján fix PWM-et ad ki.
-    
-    B. Fázisválasztás (Egy / Három)
-      Egy: Mindhárom fázis külön PID alapján megy (power1 / power2 / power3).
-      Három: A 3 fázis közös PID alapján kap egyforma PWM-et (power script).
+ESP32-S3 vezérlő, Ethernet (W5500) kommunikációval.
 
-🔥 2. Fűtés engedélyezése (évszak+napfény+fennmaradó energia)
+Modbus RTU: egy „Omero” nevű eszközről energiamérés.
 
-    Két engedélyező binary_sensor:
-    
-    őszi–tavaszi (futas_engedelyezett_ev):
-    Sept 15 – Dec 31
-    Jan 1 – May 15
-      - napközben
-       fve > 0
-    
-    nyári (futas_engedelyezett_nyar):
-      May 15 – Sept 15
-      fve > 0
-    
-    Ha mindkettő false, az összes PWM letilt → ez kiváló biztonság.
+Home Assistant integráció: több külső szenzort figyel.
 
-📡 4. Mérések
+Webszerver + API + OTA: távoli menedzsment.
 
-    Modbusról jön:
-     - pillanatnyi teljesítmény (össz + fázisonként)
-     - energia (kWh)
-    
-    HomeAssistantból jön:
-     - fogyasztásmérő 1–2–3 fázis + összes
-     - tartályhőmérsékletek (HMV, puffer alsó/felső)
-     - fennmaradó energia (PV → fűtés)
+Sun + SNTP: idő és napszak meghatározása.
 
-🎛 5. PID-ek működése
-    PID cél: –100 W
-    
-    Tehát cél a 100 W export, hogy ne legyen visszatáplálás.
-    Alap PID formula:
-    - error = setpoint - measurement
-    - kp = 0.5
-    - ki = 0.01
-    - kd = 0.1
-    
-    Integrál korlátozás:
-    - 1f esetén ±1000
-    - 3f esetén ±3000
+🌡️ Szabályozás — Áttekintés
 
-🔌 6. Relélogika (mk1, mk2 interval)
+A rendszer akkor kezd fűteni, ha mindhárom feltétel teljesül:
 
-   mk1 (Relé1):
-   5 másodpercenként:  
-    
-    - ha felső tartályhőmérséklet < max → relé1 ON
-    - vagy ha HMV < max → relé1 ON
-    - különben OFF
+A HMV tartály hőmérséklete < célhőmérséklet
 
-  mk2 (Relé2):
-  “HMV vagy puffer” váltás.
+A HMV hőmérséklete < maximális hőmérséklet
 
-    Auto:
-    - ha HMV >= cél → pufferre kapcsol
-    - ha HMV < cél → HMV-re kapcsol
-    
-    Kézi:
-    - Futés opció szerint választ (HMV vagy Puffer)
+MK1 bemenet aktív (valamilyen külső engedély vagy kontaktor visszajelzés)
 
-🧠 Összefoglaló – így működik a rendszer
+Ha nem teljesülnek → minden PWM 0, integrátorok lenullázva.
 
-    1️⃣ Először engedélyezi-e az évszak/napfény/fennmaradó energia?
-        → ha nem, mindent letilt
-    2️⃣ Auto vagy kézi üzem?
-    3️⃣ Egy vagy három fázis?
-    4️⃣ Melyik tartályba fűt? (HMV/puffer)
-    5️⃣ PID fut → PWM beállítás → SSR vezérlés
-    6️⃣ Relék 5s ciklusban váltanak HMV és puffer között
+🕹️ Üzemmód választó
+Működés mód (mukodes)
+
+Auto
+
+Kézi
+
+Fázis mód (mukodes_fazis)
+
+Egy
+
+Három
+
+Ennek megfelelően választ:
+
+1 fázis → három PWM kimenet külön PID-del
+
+3 fázis → három kimenet egyszerre, 3-fázisú PID-del
+
+🍂 / ☀️ Szezonfüggő engedélyezés
+Őszi–tavaszi üzem (futas_engedelyezett_ev)
+
+A fűtés akkor engedélyezett, ha:
+
+szeptember 15. – december 31. vagy
+
+január 1. – május 15.
+
+fennmaradó villamos energia: > 0
+
+nappal van (nap felett a horizonton)
+
+Ez a TÉLI üzemhez használatos.
+
+Nyári üzem (futas_engedelyezett_nyar)
+
+május 15. – szeptember 15.
+
+fennmaradó villamos energia: > 0
+
+Ez a PID-es NYÁRI üzemhez használatos.
+
+❄️ TÉLI üzem (Auto mód)
+
+Ha őszi–tavaszi időszak van és Auto mód:
+
+1 fázis
+
+PWM mindhárom fázison 95%.
+
+3 fázis
+
+Ugyanúgy: minden fázison 95%.
+
+👉 Tehát a téli üzem nem szabályoz, hanem fix intenzitással fűt, amíg engedélyezve van.
+
+☀️ NYÁRI PID-szabályozás (Auto mód)
+
+Csak ha:
+
+nyári időszak
+
+Auto mód
+
+van fennmaradó energia
+
+A cél: ne legyen pozitív fogyasztás, azaz a ház vagy nulla energiát vesz fel, vagy termel.
+
+Egyfázisú NYÁRI PID
+
+Mindhárom fázist külön PID szabályozza:
+
+setpoint = −100 W
+
+ház aktuális fogyasztása (L1, L2, L3) → PID
+
+a PID kimenet → PWM érték
+
+A három PID teljesen külön dolgozik.
+
+Háromfázisú NYÁRI PID
+
+setpoint = −100 W
+
+a teljes háromfázisú fogyasztás (fmw) alapján egyetlen PID számol PWM-et
+
+ugyanaz a PWM megy mindhárom kimenetre
+
+✋ KÉZI üzem
+
+Ha nem „Auto”:
+
+kcel százalékos értéke → PWM (0–100%)
+
+mindhárom fázis ugyanazt a PWM-et kapja
+
+a szezon, fogyasztás, napszak nem számít, csak a hőmérséklet és MK1 bemenet
+
+🔋 Döntési logika összefoglaló
+Feltételek	Mit csinál
+Nincs szükség fűtésre	PWM = 0, integrátorok reset
+Auto + téli szezon	1F: 95% PWM, 3F: 95% PWM
+Auto + nyári szezon	PID szabályozás (1F külön PID, 3F egy PID)
+Kézi mód	PWM = kcel (%) minden fázison
+Biztonsági fallback	PWM=0, ha nem illik egyik feltételre sem
+⚡ Kimenetek
+PWM:
+
+pwm_output1 → GPIO5
+
+pwm_output2 → GPIO38
+
+pwm_output3 → GPIO6
+50 Hz, 98% max, invertált.
+
+Relék:
+
+rele1 → tartályhőmérséklet és státusz szenzor alapján
+
+rele2 szabadon
+
+📊 Szenzorok
+Modbus:
+
+teljesítmény (össz + L1/L2/L3)
+
+összes energia
+
+Home Assistant szenzorok:
+
+3 fázis fogyasztás
+
+HMV hőmérséklet
+
+fennmaradó energia
+
+🧠 PID struktúra
+
+A program több külön PID integrátort tart fenn:
+
+L1, L2, L3 (egyfázisú üzemhez)
+
+3f (összfázisú PID)
+
+Mindegyik rendelkezik:
+
+error
+
+integral
+
+prev_error
+
+Integrátor limitált (±1000, ±3000), nehogy elszálljon.
