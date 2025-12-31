@@ -13,11 +13,11 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: ""
+    key: "LPtFX3AFGMhKhtIoQe0Zd2c8+O+iLNSMpPE/0XNul5g="
 
 ota:
   - platform: esphome
-    password: ""
+    password: "de3ad76130a54948e5c03604349e06d5"
 
 #wifi:
 #  ssid: !secret wifi_ssid
@@ -544,11 +544,11 @@ script:
           if (!felt) {
             // univerzális lekapcsolás
             id(pwm_output1).set_level(0);
-            id(pwm_l1) == 0.0;
             id(pwm_output2).set_level(0);
-            id(pwm_l2) == 0.0;
             id(pwm_output3).set_level(0);
-            id(pwm_l3) == 0.0;
+            id(pwm_l1) = 0.0;
+            id(pwm_l2) = 0.0;
+            id(pwm_l3) = 0.0;
             id(pid_integral_l1) = 0;
             id(pid_integral_l2) = 0;
             id(pid_integral_l3) = 0;
@@ -565,11 +565,11 @@ script:
             // ----- 1 fázis -----
             if (strcmp(fazis, "Egy") == 0) {
               id(pwm_output1).set_level(0.95);
-              id(pwm_l1) == 0.95;
               id(pwm_output2).set_level(0.95);
-              id(pwm_l2) == 0.95;
               id(pwm_output3).set_level(0.95);
-              id(pwm_l3) == 0.95;
+              id(pwm_l2) = 0.95;
+              id(pwm_l1) = 0.95;
+              id(pwm_l3) = 0.95;
               ESP_LOGI("custom", "Téli 1F override – 95%% PWM");
               return;
             }
@@ -577,11 +577,11 @@ script:
             // ----- 3 fázis -----
             if (strcmp(fazis, "Három") == 0) {
               id(pwm_output1).set_level(0.95);
-              id(pwm_l1) == 0.95;
               id(pwm_output2).set_level(0.95);
-              id(pwm_l2) == 0.95;
               id(pwm_output3).set_level(0.95);
-              id(pwm_l3) == 0.95;
+              id(pwm_l1) = 0.95;
+              id(pwm_l2) = 0.95;
+              id(pwm_l3) = 0.95;
               ESP_LOGI("custom", "Téli 3F override – 95%% PWM minden fázison");
               return;
             }
@@ -626,10 +626,10 @@ script:
               float clipped3 = fmax(fmin(output3 / id(futoszal_teljesitmeny_1f), 1.0), 0.0);
 
               id(pwm_output1).set_level(clipped1);
-              id(pwm_l1) = clipped1;
               id(pwm_output2).set_level(clipped2);
-              id(pwm_l2) = clipped2;
               id(pwm_output3).set_level(clipped3);
+              id(pwm_l1) = clipped1;
+              id(pwm_l2) = clipped2;
               id(pwm_l3) = clipped3;
               ESP_LOGI("custom", "PID 1F | pwm=%.4f", clipped1);
               ESP_LOGI("custom", "PID 1F | pwm=%.4f", clipped2);
@@ -655,10 +655,10 @@ script:
               float clipped = fmax(fmin(output / id(futoszal_teljesitmeny_3f), 1.0), 0.0);
 
               id(pwm_output1).set_level(clipped);
-              id(pwm_l1) = clipped;
               id(pwm_output2).set_level(clipped);
-              id(pwm_l2) = clipped;
               id(pwm_output3).set_level(clipped);
+              id(pwm_l1) = clipped;
+              id(pwm_l2) = clipped;
               id(pwm_l3) = clipped;
 
               ESP_LOGI("custom", "PID 3F | pwm=%.4f", clipped);
@@ -675,20 +675,20 @@ script:
 
             if (strcmp(fazis, "Egy") == 0) {
               id(pwm_output1).set_level(pwm);
-              id(pwm_l1) = pwm;
               id(pwm_output2).set_level(pwm);
-              id(pwm_l2) = pwm;
               id(pwm_output3).set_level(pwm);
+              id(pwm_l1) = pwm;
+              id(pwm_l2) = pwm;
               id(pwm_l3) = pwm;
               ESP_LOGI("custom", "Kézi 1F pwm=%.2f", pwm);
             }
 
             if (strcmp(fazis, "Három") == 0) {
               id(pwm_output1).set_level(pwm);
-              id(pwm_l1) = pwm;
               id(pwm_output2).set_level(pwm);
-              id(pwm_l2) = pwm;
               id(pwm_output3).set_level(pwm);
+              id(pwm_l1) = pwm;
+              id(pwm_l2) = pwm;
               id(pwm_l3) = pwm;
               ESP_LOGI("custom", "Kézi 3F pwm=%.2f", pwm);
             }
@@ -700,11 +700,11 @@ script:
           // Ha semmi sem aktiválta a PWM-et (biztonsági fallback)
           // ------------------------------------------------------------------
           id(pwm_output1).set_level(0.0);
-          id(pwm_l1) == 0.0;
           id(pwm_output2).set_level(0.0);
-          id(pwm_l2) == 0.0;
           id(pwm_output3).set_level(0.0);
-          id(pwm_l3) == 0.0;
+          id(pwm_l1) = 0.0;
+          id(pwm_l2) = 0.0;
+          id(pwm_l3) = 0.0;
           ESP_LOGW("custom", "Nem felelt meg egyik feltétel sem – PWM=0");
 
 interval:
