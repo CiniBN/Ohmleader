@@ -36,14 +36,12 @@ Nézzük egyenként, mi mire kell:
     - vezetékes ethernet port (WiFi a lemezszekrény miatt nem opció)
     - RS-485 kommunikációs felület
     - szabadon használható PWM csapok min. 3 db
-10. Mágneskapcsolók: olyan mágneskapcsolót válasszunk, amely AC-1 üzemmódban tudja kapcsolni a fűtőpatronokat. Tehát, ha azt látod, hogy AC-3 25A, az nem biztos, hogy megfelelő lesz!
-Az első mágneskapcsoló a fő mágneskapcsoló, ezt vezéreljük, ill. kapcsoljuk le ha rendellenes üzemállapot van. Ez biztonsági kérdés. Szükség van olyan pl. kapilláriscsöves termosztátra, amyelyet a tartály hőmérőhüvelyébe helyezünk és a beállított hőmérséklet elérésekor a mágneskapcsoló által a fűtőpartonokat lekapcsolja a hálózatról.
-A másik két mágneskapcsoló a HMV és puffertartályban lévő patronokat kapcsolja az SSR-k után. Ezek felelnek a patronok kiválasztásáért.
+10. Mágneskapcsoló: olyan mágneskapcsolót válasszunk, amely AC-1 üzemmódban tudja kapcsolni a fűtőpatronokat. Tehát, ha azt látod, hogy AC-3 25A, az nem biztos, hogy megfelelő lesz!
+A mágneskapcsolót vezéreljük, ill. kapcsoljuk le ha rendellenes üzemállapot van. Ez biztonsági kérdés. Szükség van olyan pl. kapilláriscsöves termosztátra, amyelyet a tartály hőmérőhüvelyébe helyezünk és a beállított hőmérséklet elérésekor a mágneskapcsoló által a fűtőpartonokat lekapcsolja a hálózatról.
 11. Home Assistant: Ez lesz a megjelenítő felületünk, itt mindenki saját maga létrehozhatja az ESP által szolgáltatott adatokat.
     Második funkciója, hogy egy pár érzékelő értékét is szolgáltatja az ESP számára:
     - P1 mérő adatai
     - HMV tartály hőmérséklete
-    - Puffer tartály hőmérséklete
 Ha a tartály hőmérséklet adatai nem álnak rendelkezésre, akkor azokat pl. DS18B20 hőmérővel lehet helyetesíteni, természetesen ebben az esetben az ESP programját módosítani kell.
     - fennmaradó villamos energia (ez a HA-ban kerül leképezésre, egy egyszerű kivonásról van szó. A hálózatba betáplált energiából kivonjuk a hálózatból vételezett energiát, ESP-ban is programozható)
    
@@ -85,6 +83,7 @@ Ennek megfelelően választ:
  - szeptember 15. – december 31. vagy
  - január 1. – május 15.
  - fennmaradó villamos energia: > 0
+ - a beállított időn tólhaladtunk
  - nappal van (nap felett a horizonton)
 Ez a TÉLI üzemhez használatos.
 
@@ -135,7 +134,7 @@ PWM:
 
 Relék:
 - rele1 → tartályhőmérséklet és státusz szenzor alapján
-- rele2 szabadon
+- rele2 → PWM kimenet > 0, tehát a fűtőpatron 0-nál nagyobb teljesítménnyel üzemel.
 
 📊 Szenzorok
 Modbus:
