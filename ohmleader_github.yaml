@@ -1,6 +1,6 @@
 esphome:
-  name: ohmpileader
-  friendly_name: Ohmpileader
+  name: ohmpilot
+  friendly_name: Ohmpilot
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -154,11 +154,46 @@ globals:
   # Fűtőszál teljesítménye:
   - id: futoszal_teljesitmeny_3f
     type: float
-    initial_value: '3.0'  # Állítsd be a valódi értéket! [kW]
+    initial_value: '3.2'  # Állítsd be a valódi értéket! [kW]
 
   - id: futoszal_teljesitmeny_1f
     type: float
-    initial_value: '1.0'  # Állítsd be a valódi értéket! [kW]
+    initial_value: '1.06'  # Állítsd be a valódi értéket! [kW]
+
+ # Globális változók mk2 vezérléséhez
+  - id: pwm_l1
+    type: float
+    initial_value: '0.0'
+
+  - id: pwm_l2
+    type: float
+    initial_value: '0.0'
+
+  - id: pwm_l3
+    type: float
+    initial_value: '0.0'
+
+datetime:
+  - platform: template
+    id: futes_kezdete
+    name: "Fűtési időszak kezdete"
+    type: date
+    initial_value: "2025-10-15"
+    optimistic: true
+
+  - platform: template
+    id: futes_vege
+    name: "Fűtési időszak vége"
+    type: date
+    initial_value: "2025-03-15"
+    optimistic: true
+
+  - platform: template
+    id: futes_ido_kezd
+    name: "Fűtési idő kezdete"
+    type: time
+    initial_value: "13:00:00"
+    optimistic: true
 
 button:
   - platform: restart
@@ -174,7 +209,7 @@ number:
     min_value: 30.0
     step: 0.5
     optimistic: true
-    initial_value: 60.0
+    initial_value: 55.0
     mode: BOX
     on_value: 
       - then:
@@ -314,7 +349,7 @@ sensor:
     device_class: energy
     unit_of_measurement: "kWh"
     lambda: |-
-      return id(ove).state - 200.26; // A fogyasztásmérő korábbi fogyasztása, ha nem 0-ról indult a mérés.
+      return id(ove).state - 284.76; // A fogyasztásmérő korábbi fogyasztása, ha nem 0-ról indult a mérés.
   
   - platform: homeassistant
     entity_id: sensor.p1_meter_5c2faf10f87a_aktiv_teljesitmeny_1_fazis
@@ -389,41 +424,69 @@ binary_sensor:
         - script.execute: power
 
   - platform: gpio
-    name: "A2v3-input2"
-    id: mk2_input
+    name: "Engedélyező kapcsoló"
+    id: en_switch
     pin:
       number: 17
       inverted: true
+    on_state: 
+      - then:
+        - script.execute: power
 
   # Engedélyezés ősz-tavasz: 09.15 -> 12.31 és 01.01 -> 05.15, napközben, fennmaradó villamos energia > 0
   - platform: template
     name: "Fűtés engedélyezett (őszi–tavaszi)"
     id: futas_engedelyezett_ev
     lambda: |-
-      // fennmaradó energia ellenőrzése
+      // Fennmaradó energia
       float energy = id(fve).state;
-      if (energy <= 0.0) {
-        return false;
-      }
+      if (energy <= 0.0) return false;
 
-      // időpont (SNTP)
+      // Aktuális dátum
       auto now = id(sntp_time).now();
       if (!now.is_valid()) return false;
       int m = now.month;
       int d = now.day_of_month;
 
+      // Beállított kezdő dátum (téli időszak kezdete)
+      int sm = id(futes_kezdete).month;
+      int sd = id(futes_kezdete).day;
+
+      // Beállított záró dátum (téli időszak vége)
+      int em = id(futes_vege).month;
+      int ed = id(futes_vege).day;
+
       bool in_range = false;
-      // szeptember 15 - december 31
-      if (m > 9 || (m == 9 && d >= 15)) in_range = true;
-      // január 1 - május 15
-      if (m < 5 || (m == 5 && d <= 15)) in_range = true;
+
+      // Ellenőrizzük, hogy átnyúlik-e évfordulón (pl. 09.15 → 05.15)
+      bool crosses_year = (sm > em) || (sm == em && sd > ed);
+
+      if (crosses_year) {
+        // Példa: 09.15 → 12.31 ÉS 01.01 → 05.15
+        if ((m > sm || (m == sm && d >= sd)) ||
+            (m < em || (m == em && d <= ed))) {
+          in_range = true;
+        }
+      } else {
+        // Nem lépi át az év végét
+        if ((m > sm || (m == sm && d >= sd)) &&
+            (m < em || (m == em && d <= ed))) {
+          in_range = true;
+        }
+      }
 
       if (!in_range) return false;
 
-      // napközben? (sun komponens is_day)
+      // Kezdő időpont (óra:perc)
+      int sh = id(futes_ido_kezd).hour;
+      int smi = id(futes_ido_kezd).minute;
+
+      if (now.hour < sh || (now.hour == sh && now.minute < smi))
+        return false;
+
+      // Napközben legyen
       if (!id(sun_main).is_above_horizon()) return false;
 
-      // ha minden feltétel teljesül -> engedélyezett
       return true;
 
   # Engedélyezés nyár: 05.15 -> 09.15 között, csak ha a fennmaradó villamos energia > 0
@@ -431,20 +494,32 @@ binary_sensor:
     name: "Fűtés engedélyezett (nyári)"
     id: futas_engedelyezett_nyar
     lambda: |-
+      // Fennmaradó energia
       float energy = id(fve).state;
       if (energy <= 0.0) return false;
 
+      // Aktuális dátum
       auto now = id(sntp_time).now();
       if (!now.is_valid()) return false;
       int m = now.month;
       int d = now.day_of_month;
 
-      // Május 15 -> Szeptember 15 (beleértve)
-      if (m < 5 || m > 9) return false;
-      if (m == 5 && d < 15) return false;
-      if (m == 9 && d > 15) return false;
+      // Nyár kezdete = téli időszak vége (pl. 05.15)
+      int sm = id(futes_vege).month;
+      int sd = id(futes_vege).day;
 
-      return true;
+      // Nyár vége = téli időszak kezdete (pl. 09.15)
+      int em = id(futes_kezdete).month;
+      int ed = id(futes_kezdete).day;
+
+      // Dátum tartomány ellenőrzése
+      bool in_range = false;
+      if ((m > sm || (m == sm && d >= sd)) &&
+          (m < em || (m == em && d <= ed))) {
+        in_range = true;
+      }
+
+      return in_range;
 
 script:
   - id: power
@@ -456,19 +531,24 @@ script:
           bool ev = id(futas_engedelyezett_ev).state;
           bool nyar = id(futas_engedelyezett_nyar).state;
           bool mk1 = id(mk1_input).state;
+          bool en = id(en_switch).state;
 
           const char* mode = id(mukodes).current_option();         // Auto / Manual
           const char* fazis = id(mukodes_fazis).current_option();  // Egy / Három
 
           bool felt = (id(hmvh).state < id(celt).state &&
                        id(maxt).state > id(hmvh).state &&
-                       mk1);
+                       mk1 && 
+                       en_switch);
 
           if (!felt) {
             // univerzális lekapcsolás
             id(pwm_output1).set_level(0);
+            id(pwm_l1) == 0.0;
             id(pwm_output2).set_level(0);
+            id(pwm_l2) == 0.0;
             id(pwm_output3).set_level(0);
+            id(pwm_l3) == 0.0;
             id(pid_integral_l1) = 0;
             id(pid_integral_l2) = 0;
             id(pid_integral_l3) = 0;
@@ -485,8 +565,11 @@ script:
             // ----- 1 fázis -----
             if (strcmp(fazis, "Egy") == 0) {
               id(pwm_output1).set_level(0.95);
+              id(pwm_l1) == 0.95;
               id(pwm_output2).set_level(0.95);
+              id(pwm_l2) == 0.95;
               id(pwm_output3).set_level(0.95);
+              id(pwm_l3) == 0.95;
               ESP_LOGI("custom", "Téli 1F override – 95%% PWM");
               return;
             }
@@ -494,8 +577,11 @@ script:
             // ----- 3 fázis -----
             if (strcmp(fazis, "Három") == 0) {
               id(pwm_output1).set_level(0.95);
+              id(pwm_l1) == 0.95;
               id(pwm_output2).set_level(0.95);
+              id(pwm_l2) == 0.95;
               id(pwm_output3).set_level(0.95);
+              id(pwm_l3) == 0.95;
               ESP_LOGI("custom", "Téli 3F override – 95%% PWM minden fázison");
               return;
             }
@@ -540,8 +626,11 @@ script:
               float clipped3 = fmax(fmin(output3 / id(futoszal_teljesitmeny_1f), 1.0), 0.0);
 
               id(pwm_output1).set_level(clipped1);
+              id(pwm_l1) = clipped1;
               id(pwm_output2).set_level(clipped2);
+              id(pwm_l2) = clipped2;
               id(pwm_output3).set_level(clipped3);
+              id(pwm_l3) = clipped3;
               ESP_LOGI("custom", "PID 1F | pwm=%.4f", clipped1);
               ESP_LOGI("custom", "PID 1F | pwm=%.4f", clipped2);
               ESP_LOGI("custom", "PID 1F | pwm=%.4f", clipped3);
@@ -566,8 +655,11 @@ script:
               float clipped = fmax(fmin(output / id(futoszal_teljesitmeny_3f), 1.0), 0.0);
 
               id(pwm_output1).set_level(clipped);
+              id(pwm_l1) = clipped;
               id(pwm_output2).set_level(clipped);
+              id(pwm_l2) = clipped;
               id(pwm_output3).set_level(clipped);
+              id(pwm_l3) = clipped;
 
               ESP_LOGI("custom", "PID 3F | pwm=%.4f", clipped);
               return;
@@ -583,15 +675,21 @@ script:
 
             if (strcmp(fazis, "Egy") == 0) {
               id(pwm_output1).set_level(pwm);
+              id(pwm_l1) = pwm;
               id(pwm_output2).set_level(pwm);
+              id(pwm_l2) = pwm;
               id(pwm_output3).set_level(pwm);
+              id(pwm_l3) = pwm;
               ESP_LOGI("custom", "Kézi 1F pwm=%.2f", pwm);
             }
 
             if (strcmp(fazis, "Három") == 0) {
               id(pwm_output1).set_level(pwm);
+              id(pwm_l1) = pwm;
               id(pwm_output2).set_level(pwm);
+              id(pwm_l2) = pwm;
               id(pwm_output3).set_level(pwm);
+              id(pwm_l3) = pwm;
               ESP_LOGI("custom", "Kézi 3F pwm=%.2f", pwm);
             }
 
@@ -602,8 +700,11 @@ script:
           // Ha semmi sem aktiválta a PWM-et (biztonsági fallback)
           // ------------------------------------------------------------------
           id(pwm_output1).set_level(0.0);
+          id(pwm_l1) == 0.0;
           id(pwm_output2).set_level(0.0);
+          id(pwm_l2) == 0.0;
           id(pwm_output3).set_level(0.0);
+          id(pwm_l3) == 0.0;
           ESP_LOGW("custom", "Nem felelt meg egyik feltétel sem – PWM=0");
 
 interval:
@@ -612,12 +713,24 @@ interval:
     then: 
       - lambda: |-
           if ((id(maxt).state > id(hmvh).state) &&
-              (id(st).state == 1 )) {
+              (id(st).state == 1 ) &&
+              (id(en_switch).state == 1 )) {
 
             id(rele1).turn_on();
 
           } else {
             id(rele1).turn_off();
+          }
+
+  - id: mk2
+    interval: 1s
+    then:
+      - lambda: |-
+          if (id(pwm_l1) > 0.0 || id(pwm_l2) > 0.0 || id(pwm_l3) > 0.0) {
+            id(rele2).turn_on();
+            ESP_LOGW("custom", "MK2 BE");
+          } else {
+            id(rele2).turn_off();
           }
           
 output:
