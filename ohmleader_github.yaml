@@ -278,6 +278,7 @@ number:
     optimistic: true
     initial_value: 0.6  # Megnövelt kezdeti érték
     mode: BOX
+    restore_value: True
 
   - platform: template
     id: kdd
@@ -288,6 +289,7 @@ number:
     optimistic: true
     initial_value: 0.6  # Megnövelt kezdeti érték
     mode: BOX
+    restore_value: True
 
 select:
 - platform: template
