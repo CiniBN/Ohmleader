@@ -164,22 +164,32 @@ Kp, Ki, Kd paraméterek automatkus hangolása (kizárólag nyári üzemmódban):
 Finomhangolás:
 1. A Kp-t automatikusan állítja.
 2. Ki beállítása:
- - Növeld lassan az I értékét
-Mit csinál?
-Megszünteti az állandósult hibát (offset)
-Figyelj:
- - Túl nagy I → lengés, instabilitás
-👉 Addig növeld, amíg:
- - A hiba eltűnik
- - De a rendszer még stabil marad
-3. Kd beállítása:
- - Adj hozzá kis D értéket
-Mit csinál?
- - Csökkenti a túllövést
- - Stabilizálja a gyors változásokat
-👉 Ha:
-Zajos a jel → ne növeld túl a D-t (érzékeny a zajra)
+⏱️ I tag hozzáadása
+Növeld lassan az I értékét
 
+Mit csinál?
+
+Megszünteti az állandósult hibát (offset)
+
+Figyelj:
+
+Túl nagy I → lengés, instabilitás
+
+👉 Addig növeld, amíg:
+
+A hiba eltűnik
+De a rendszer még stabil marad
+⚡  D tag finomhangolása
+Adj hozzá kis D értéket
+
+Mit csinál?
+
+Csökkenti a túllövést
+Stabilizálja a gyors változásokat
+
+👉 Ha:
+
+Zajos a jel → ne növeld túl a D-t (érzékeny a zajra)
 
 FONTOS!
 
