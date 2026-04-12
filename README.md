@@ -164,6 +164,7 @@ Kp, Ki, Kd paraméterek automatkus hangolása (kizárólag nyári üzemmódban):
 Finomhangolás:
 1. A Kp-t automatikusan állítja.
 2. Ki beállítása:
+   
 ⏱️ I tag hozzáadása
 
 Növeld lassan az I értékét
@@ -180,10 +181,11 @@ Figyelj:
 
 A hiba eltűnik, de a rendszer még stabil marad
 
-3. di beállítása:
+3. Kd beállítása:
+   
 ⚡  D tag finomhangolása
 
-Adj hozzá kis D értéket
+  Adj hozzá kis D értéket
 
 Mit csinál?
 
@@ -191,7 +193,7 @@ Mit csinál?
 
 👉 Ha:
 
-Zajos a jel → ne növeld túl a D-t (érzékeny a zajra)
+  Zajos a jel → ne növeld túl a D-t (érzékeny a zajra)
 
 FONTOS!
 
