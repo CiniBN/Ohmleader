@@ -93,9 +93,10 @@ Kézi mód
  - Állítható PWM (0-100%)
 
 3. PID szabályozás részletei
-                Setpoint: -100W (minimális hálózati betáplálás)
-                Mérés: Fogyasztásmérő teljesítménye
-                Hiba = -100 - mérés
+   
+        Setpoint: -100W (minimális hálózati betáplálás)
+        Mérés: Fogyasztásmérő teljesítménye
+        Hiba = -100 - mérés
 Paraméterek:
  - Kp: 0-4 (alap: 2.5)
  - Ki: 0-2 (alap: 0.6)
@@ -143,8 +144,20 @@ Szenzorok:
  - Napi energiafogyasztás
 
 Felhasználói vezérlők:
- - Célhőmérséklet (30-65°C)
- - Maximális hőmérséklet (30-75°C)
- - PID paraméterek (Kp, Ki, Kd)
- - Energiahatár (-100 - +100 kWh)
- - Fűtési időszak dátumai
+ - Célhőmérséklet (30-65°C): A tartályban elérni kívént hőmérséklet
+ - Maximális hőmérséklet (30-75°C): A tartály maximális hőmérséklete
+ - PID paraméterek (Kp, Ki, Kd): Nyári fűtési szezonban a PID szabályzó paraméterei
+ - Energiahatár (-100 - +100 kWh): Visszatáplált energia minimális értéke. Ezt az értéket minden esetben megtartja a szabályozó. Egész éves visszatáplálás alapján ez az érték fog megmaradni napsötés nélküli napok esetén. Érthetően: ha értéke 50 kWh, akkor ez lesz az az energia mennyiség, ami télen borús idő esetén a ház fogyasztását fedezi.
+ - Fűtési időszak dátumai: A fűtési és szabályozási metodika felosztásra került téli és nyári időszakokra. A téli időszakban a szabályzó nem végez szabályozást. A fennmaradó villamos energiából dolgozik az Energiahatár eléréséig 98%-os teljesítménnyel. Nyári időszakban működik a PID szabályozás. (Az entitásnál az "év" mezőt nem figyeljük, csak a "hónap" és "nap" mezők számítanak.)
+ - Fűtési idő kezdete: Szintén csak téli fűtési időszakban használatos, adott napon belül a fűtés kezdeti idejét tudjuk megadni.
+ - Kézi alapjel: Kézi üzemmódban alapjel beállítása.
+
+
+Kp, Ki, Kd paraméterek automatkus hangolása (kizárólag nyári üzemmódban):
+1. Auto-tune engedélyezése számot állítsuk 1-re.
+2. Nyomjuk meg a PID Auto-tune indítása gomgot.
+3. A hangolás elindul 3 ciklus erejéig, ekkor a PID szabályozás nem aktív.
+4. A hangolás elvégzéséről a Auto-tune aktív bináris szenzor ad visszajelzést. (kb. 30-45 másodperc)
+5. A hangolás végeztével a Kp, Ki, Kd paraméterek beíródnak és tárolódnak.
+6. Auto-tune engedélyezése számot állítsuk 0-ra. Ekkor elindul a PID szabályozás az új paraméterekkel.
+
