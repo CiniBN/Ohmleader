@@ -51,107 +51,100 @@ Minden esetben tartsa be az oszágában évrényes szabványokat, jogszabályoka
 A szerző semmilyen jogi következményt nem vállal a hibás és nem megfelelő méretezésből és kivitelezésből származó balesetek, tűzesetek miatt!
 Minden nemű a villamos hálózatra kapcsolt saját gyártmányú nem minősített berendezés hálózatra kapcsolása az Ön felelősége!
 
-🔧 Főbb funkciók és működési módok
-1. Kapcsolódás és alap infrastruktúra:
-- ESP32-S3 vezérlő, Ethernet (W5500) kommunikációval.
-- Modbus RTU: egy „Omero” nevű eszközről energiamérés.
-- Home Assistant integráció: több külső szenzort figyel.
-- Webszerver + API + OTA: távoli menedzsment.
-- Sun + SNTP: idő és napszak meghatározása.
+Hardver konfiguráció
+ ESP32-S3 és hálózat
+ Board: ESP32-S3-DevKitC-1, ESP-IDF frameworkkel
+ Hálózat: Ethernet W5500 chip (GPIO42-44, CS:41, interrupt:2, reset:1)
+ Statikus IP: 192.168.1.22 - kiküszöböli a Wi-Fi problémákat
+ Web szerver: 80-as porton fut
 
-🌡️ Szabályozás — Áttekintés
-- A rendszer akkor kezd fűteni, ha mindhárom feltétel teljesül:
-- A HMV tartály hőmérséklete < célhőmérséklet
-- A HMV hőmérséklete < maximális hőmérséklet
-- MK1 bemenet aktív (fő mágneskapcsoló visszajelzés)
-- Ha nem teljesülnek → minden PWM 0, integrátorok lenullázva.
+Perifériák
+ UART (Modbus): GPIO7 (TX), GPIO15 (RX), 4800 baud
+ PWM kimenetek (triak vezérlés?): GPIO5,38,6 (50Hz, invertált)
+ Relék: GPIO40 (MK1), GPIO39 (MK2)
+  bemenetek: GPIO16 (MK1 állapot), GPIO17 (Engedélyező kapcsoló)
 
-🕹️ Üzemmód választó
-Működés mód (mukodes)
-- Auto
-- Kézi
-Fázis mód (mukodes_fazis)
-- Egy
-- Három
-Ennek megfelelően választ:
-- 1 fázis → három PWM kimenet külön PID-del
-- 3 fázis → három kimenet egyszerre, 3-fázisú PID-del
+Modbus kommunikáció
+ Eszköz: Omero (address 0x0003)
+ Olvasott értékek:
+  - Pillanatnyi teljesítmény (kW) - 0x5012 (3 fázis + összes)
+  - Hatásos villamos energia (kWh) - 0x600C
 
-🍂 / ☀️ Szezonfüggő engedélyezés
-Őszi–tavaszi üzem (futas_engedelyezett_ev)
- A fűtés akkor engedélyezett, ha:
- - szeptember 15. – december 31. vagy
- - január 1. – május 15.
- - fennmaradó villamos energia: > 0
- - a beállított időn tólhaladtunk
- - nappal van (nap felett a horizonton)
-Ez a TÉLI üzemhez használatos.
+Szabályozási logika
+1. Fűtési feltételek ellenőrzése (power script)
+A fűtés csak akkor indul, ha:
+ - HMV hőmérséklet < Célhőmérséklet
+ - Max hőmérséklet > Aktuális hőmérséklet
+ - MK1 bemenet aktív
+ - Engedélyező kapcsoló aktív
 
-Nyári üzem (futas_engedelyezett_nyar)
- - május 15. – szeptember 15.
- - fennmaradó villamos energia: > 0
-Ez a PID-es NYÁRI üzemhez használatos.
+2. Üzemmódok
+Téli üzem (október 15 - március 15)
+ - 100% fűtés (98% PWM) minden fázison
+ - Napközben (napkelte után)
+ - Fennmaradó energia > 50kWh (állítható)
 
-❄️ TÉLI üzem (Auto mód)
-Ha őszi–tavaszi időszak van és Auto mód:
-- 1 fázis
-PWM mindhárom fázison 95%.
-- 3 fázis
-Ugyanúgy: minden fázison 95%.
-👉 Tehát a téli üzem nem szabályoz, hanem fix intenzitással fűt, amíg engedélyezve van.
+Nyári üzem (március 15 - október 15)
+ - PID szabályozás a fogyasztásmérő alapján
+ - Cél: -100W (visszatáplálás minimalizálása)
+ - 3 fázis azonos PWM jellel
 
-☀️ NYÁRI PID-szabályozás (Auto mód)
-Csak ha:
-- nyári időszak
-- Auto mód
-- van fennmaradó energia
-A cél: ne legyen pozitív fogyasztás, azaz a ház vagy nulla energiát vesz fel, vagy termel.
+Kézi mód
+ - Állítható PWM (0-100%)
 
-Egyfázisú NYÁRI PID
-Mindhárom fázist külön PID szabályozza:
-- setpoint = −100 W
-- ház aktuális fogyasztása (L1, L2, L3) → PID
-- a PID kimenet → PWM érték
-- A három PID teljesen külön dolgozik.
+3. PID szabályozás részletei
+                Setpoint: -100W (minimális hálózati betáplálás)
+                Mérés: Fogyasztásmérő teljesítménye
+                Hiba = -100 - mérés
+Paraméterek:
+ - Kp: 0-4 (alap: 2.5)
+ - Ki: 0-2 (alap: 0.6)
+ - Kd: 0-2 (alap: 0.6)
 
-Háromfázisú NYÁRI PID
-- setpoint = −100 W
-- a teljes háromfázisú fogyasztás (fmw) alapján egyetlen PID számol PWM-et
-- ugyanaz a PWM megy mindhárom kimenetre
+Speciális funkciók:
+ - Derivatív szűrés (α=0.15) a zaj csökkentésére
+ - Anti-windup: integrál korlátozás ±max_power
+ - Rámpa funkció: 2%/sec PWM változás
 
-✋ KÉZI üzem
-Ha nem „Auto”:
-- kcel százalékos értéke → PWM (0–100%)
-- mindhárom fázis ugyanazt a PWM-et kapja
-- a szezon, fogyasztás, napszak nem számít, csak a hőmérséklet és MK1 bemenet
+4. Auto-tune funkció
+Automata PID hangolás:
+ - Alap teljesítmény mérés
+ - 20% PWM lépcső adás
+ - Állandósult állapot elérésének mérése
+ - Ku (kritikus erősítés) és Tu (kritikus periódus) számítás
+ - Ziegler-Nichols módszer: Kp=0.6Ku, Ki=1.2Ku/Tu, Kd=0.075Ku*Tu
+ - 3 ciklus átlagolása
 
-⚡ Kimenetek
-PWM:
-- pwm_output1 → GPIO5
-- pwm_output2 → GPIO38
-- pwm_output3 → GPIO6
-50 Hz, 98% max, invertált.
+5. Adaptív P szabályozás
+Dinamikusan módosítja Kp-t:
+ - Növeli (×1.05, max 4.0): ha nagy hiba (>200W) és nem csökken
+ - Csökkenti (×0.9, min 0.1): ha túllövés van (>50W hiba)
 
-Relék:
-- rele1 → tartályhőmérséklet és státusz szenzor alapján
-- rele2 → PWM kimenet > 0, tehát a fűtőpatron 0-nál nagyobb teljesítménnyel üzemel.
+Időzített feladatok
+1 másodpercenként:
+ - power script végrehajtása (fűtés szabályozás)
+5 másodpercenként:
+ - MK1 relé vezérlése (biztonsági feltételek)
+1 másodpercenként:
+ - MK2 relé vezérlése (PWM aktív állapot jelzése)
 
-📊 Szenzorok
-Modbus:
-- teljesítmény (össz + L1/L2/L3)
-- összes energia
-Home Assistant szenzorok:
-- 3 fázis fogyasztás
-- HMV hőmérséklet
-- fennmaradó energia
+Biztonsági funkciók
+ - Túlmelegedés védelem: Maxt > HMV hőmérséklet ellenőrzés
+ - Energia limit: Fennmaradó energia küszöb (ehtr)
+ - Időszakos engedélyezés: Dátum- és időablakok
+ - Hardver engedélyezés: MK1 és engedélyező kapcsoló
+ - PID integrál újraindítás fűtési feltételek megszűnésekor
 
-🧠 PID struktúra
-A program több külön PID integrátort tart fenn:
-- L1, L2, L3 (egyfázisú üzemhez)
-- 3f (összfázisú PID)
+Adatgyűjtés és monitorozás
+Szenzorok:
+ - Fogyasztásmérő (3 fázis + összes) - Home Assistantból
+ - HMV hőmérséklet - Home Assistantból
+ - Modbus teljesítmény adatok
+ - Napi energiafogyasztás
 
-Mindegyik rendelkezik:
-- error
-- integral
-- prev_error
-Integrátor limitált (±1000, ±3000), nehogy elszálljon.
+Felhasználói vezérlők:
+ - Célhőmérséklet (30-65°C)
+ - Maximális hőmérséklet (30-75°C)
+ - PID paraméterek (Kp, Ki, Kd)
+ - Energiahatár (-100 - +100 kWh)
+ - Fűtési időszak dátumai
