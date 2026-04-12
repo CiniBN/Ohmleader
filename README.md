@@ -52,17 +52,17 @@ A szerző semmilyen jogi következményt nem vállal a hibás és nem megfelelő
 Minden nemű a villamos hálózatra kapcsolt saját gyártmányú nem minősített berendezés hálózatra kapcsolása az Ön felelősége!
 
 Hardver konfiguráció
- ESP32-S3 és hálózat
- Board: ESP32-S3-DevKitC-1, ESP-IDF frameworkkel
- Hálózat: Ethernet W5500 chip (GPIO42-44, CS:41, interrupt:2, reset:1)
- Statikus IP: 192.168.1.22 - kiküszöböli a Wi-Fi problémákat
- Web szerver: 80-as porton fut
+- ESP32-S3 és hálózat
+- Board: ESP32-S3-DevKitC-1, ESP-IDF frameworkkel
+- Hálózat: Ethernet W5500 chip (GPIO42-44, CS:41, interrupt:2, reset:1)
+- Statikus IP: 192.168.1.22 - kiküszöböli a Wi-Fi problémákat
+- Web szerver: 80-as porton fut
 
 Perifériák
- UART (Modbus): GPIO7 (TX), GPIO15 (RX), 4800 baud
- PWM kimenetek (triak vezérlés?): GPIO5,38,6 (50Hz, invertált)
- Relék: GPIO40 (MK1), GPIO39 (MK2)
-  bemenetek: GPIO16 (MK1 állapot), GPIO17 (Engedélyező kapcsoló)
+- UART (Modbus): GPIO7 (TX), GPIO15 (RX), 4800 baud
+- PWM kimenetek (triak vezérlés?): GPIO5,38,6 (50Hz, invertált)
+- Relék: GPIO40 (MK1), GPIO39 (MK2)
+   bemenetek: GPIO16 (MK1 állapot), GPIO17 (Engedélyező kapcsoló)
 
 Modbus kommunikáció
  Eszköz: Omero (address 0x0003)
