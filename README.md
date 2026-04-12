@@ -166,7 +166,7 @@ FONTOS!
 A Homewisard P1 mérők frissítési időköze 5s. Ez kevés a fenti szabályozáshoz. Egy egyszerű REST hívássall viszont 1s-ként ezt elvégezhetjük.
 Ha van sensor.yaml fájlunk a HA-ban, akkor a végére illesszük be az alábbi szenzort:
 
-    # Ohmpilothoz kell 1 s-kénti mérés!
+    # Ohmleaderhez kell 1 s-kénti mérés!
     - platform: rest
       name: "P1 Aktív Teljesítmény"
       resource: "http://<HOMEWISARD_P1_IP_ADDRESS>/api/v1/data"
